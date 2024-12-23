@@ -4,12 +4,13 @@ import Control.Monad.State.Lazy
 import qualified Data.Map.Lazy as M
 import Text.Read (readMaybe)
 
-data Expression = Number Integer | Word String | List [Expression] | End deriving (Eq)
+data Expression = Number Integer | Word String | List [Expression] | Function [Expression] Expression | End deriving (Eq)
 
 instance Show Expression where
     show (Number number) = show number
     show (Word word) = word
     show (List exprs) = "(" ++ unwords (map show exprs) ++ ")"
+    show (Function _ _ ) = "function"
 
 instance Num Expression where
     Number x + Number y = Number $ x + y
@@ -34,11 +35,11 @@ collectSubexprs = do
             return (expr : rest)
 
 readExpr = do
-    (tokens, var, fns) <- get
+    tokens <- gets fst
     case tokens of
         [] -> return End
         (token:rest) -> do
-            put (rest, var, fns)
+            modify $ \(_, var) -> (rest, var)
             case token of
                 "(" -> do
                     subexprs <- collectSubexprs
@@ -52,17 +53,15 @@ readExpr = do
                     _ -> return $ Word token
 
 getVariable name = do
-    (tokens, var, fns) <- get
+    var <- gets snd
     return $ var M.! name
 
-setVariable name value = modify $ \(tokens, var, fns) -> (tokens, M.insert name value var, fns)
+setVariable name value = modify $ \(tokens, var) -> (tokens, M.insert name value var)
 
 setVariables [] = return ()
 setVariables ((Word name, value):rest) = do
     setVariable name value
     setVariables rest
-
-setFunction name fargs body = modify $ \(tokens, var, fns) -> (tokens, var, M.insert name (fargs, body) fns)
 
 eval expr = case expr of
     Number _ -> return expr
@@ -75,7 +74,7 @@ eval expr = case expr of
                 setVariable name value
                 return $ Word name
             [List (Word name:fargs), body] -> do
-                setFunction name fargs body
+                setVariable name $ Function fargs body
                 return $ Word name
         "if" -> do
             value <- eval $ args !! 0
@@ -96,8 +95,7 @@ eval expr = case expr of
                 "cdr" -> let List (x:xt) = args !! 0 in return $ List xt
                 "length" -> let List xs = args !! 0 in return . Number . toInteger $ length xs
                 _ -> do
-                    (_, _, fns) <- get
-                    let (fargs, body) = fns M.! fn
+                    Function fargs body <- getVariable fn
                     setVariables $ zip fargs args
                     eval body
 
@@ -112,4 +110,4 @@ loop = do
 
 main = do
     tokens <- fmap (concat . map unbracket . concat . map words . lines) getContents
-    runStateT loop (tokens, M.empty, M.empty)
+    runStateT loop (tokens, M.empty)
