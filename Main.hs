@@ -4,7 +4,7 @@ import Control.Monad.State.Lazy
 import qualified Data.Map.Lazy as M
 import Text.Read (readMaybe)
 
-data Expression = Number Integer | Word String | List [Expression] | Function [Expression] Expression | Builtin String | End deriving (Eq)
+data Expression = Number Integer | Word String | List [Expression] | Function [Expression] Expression | Builtin String | End deriving (Eq, Ord)
 
 instance Show Expression where
     show (Number number) = show number
@@ -19,7 +19,7 @@ instance Num Expression where
     Number x * Number y = Number $ x * y
     fromInteger x = Number x
 
-builtins = M.fromList [(name, Builtin name) | name <- ["quote", "define", "if", "+", "-", "*", "=", "cons", "car", "cdr", "length"]]
+builtins = M.fromList [(name, Builtin name) | name <- ["quote", "define", "if", "+", "-", "*", "=", "<", "cons", "car", "cdr", "length", "null"]]
 
 unbracket [] = []
 unbracket ('(':xt) = "(" : unbracket xt
@@ -101,10 +101,12 @@ eval expr = case expr of
                             _ -> return $ head args - sum (tail args)
                         "*" -> return $ product args
                         "=" -> return $ if all (head args ==) $ tail args then 1 else 0
+                        "<" -> return $ if args !! 0 < args !! 1 then 1 else 0
                         "cons" -> let [x, List xt] = args in return $ List (x : xt)
                         "car" -> let List (x:xt) = args !! 0 in return x
                         "cdr" -> let List (x:xt) = args !! 0 in return $ List xt
                         "length" -> let List xs = args !! 0 in return . Number . toInteger $ length xs
+                        "null" -> let List xs = args !! 0 in return $ if length xs == 0 then 1 else 0
 
 loop = do
     expr <- readExpr
